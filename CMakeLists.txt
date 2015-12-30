@@ -151,21 +151,16 @@ include_directories(
 # add_dependencies(libfreenect2_ros_grabber ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-add_executable(libfreenect2_ros_grabber_point_cloud src/pointCloudPublisher.cpp)
-add_executable(libfreenect2_ros_grabber_kinect_frame src/KinectFramePublisher.cpp)
+add_executable(libfreenect2_ros_grabber src/libfreenect2_ros_grabber.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 
 ## Specify libraries to link a library or executable target against
 
-target_link_libraries(libfreenect2_ros_grabber_point_cloud
+target_link_libraries(libfreenect2_ros_grabber
   ${catkin_LIBRARIES}
   ${OpenCV_LIBS} ${freenect2_LIBRARIES} ${GLFW_LIBRARIES} ${PCL_LIBRARIES}
-)
-
-target_link_libraries(libfreenect2_ros_grabber_kinect_frame
-  ${catkin_LIBRARIES}
 )
 
 #############
