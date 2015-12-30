@@ -10,4 +10,4 @@ To build:
 2. Run catkin build libfreenect2_ros_grabber
 
 To run:
-Use roslaunch libfreenect2_ros_grabber libfreenect2.launch
+1. rosrun libfreenect2_ros_grabber libfreenect2_ros_grabber
