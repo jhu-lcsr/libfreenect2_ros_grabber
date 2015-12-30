@@ -1,0 +1,4 @@
+<launch>
+    <node pkg="libfreenect2_ros_grabber" type="libfreenect2_ros_grabber_kinect_frame" name ="kinect_frame"/>
+    <node pkg="libfreenect2_ros_grabber" type="libfreenect2_ros_grabber_point_cloud" name ="Point_cloud"/>
+</launch>
