@@ -1,5 +1,9 @@
 /*
 Copyright 2015, Giacomo Dabisias"
+
+Dual licensed with permission under GPLv3 or later and the 2 clause simplified BSD.
+https://github.com/giacomodabisias/libfreenect2pclgrabber/issues/10
+
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
@@ -34,24 +38,24 @@ via Luigi Alamanni 13D, San Giuliano Terme 56010 (PI), Italy
 #include <cstdlib>
 #include <Eigen/Core>
 
-bool stop = false;
+//bool stop = false;
 
 enum processor{
 	CPU, OPENCL, OPENGL
 };
 
-void sigint_handler(int s)
-{
-	stop = true;
-}
+// void sigint_handler(int s)
+// {
+//     stop = true;
+// }
 
 class K2G {
 
 public:
 
-	K2G(processor p): undistorted_(512, 424, 4), registered_(512, 424, 4), big_mat_(1920, 1082, 4), listener_(libfreenect2::Frame::Color | libfreenect2::Frame::Ir | libfreenect2::Frame::Depth),qnan_(std::numeric_limits<float>::quiet_NaN()){
+	K2G(processor p, bool mirror = 1): mirror_(mirror), listener_(libfreenect2::Frame::Color | libfreenect2::Frame::Ir | libfreenect2::Frame::Depth), undistorted_(512, 424, 4), registered_(512, 424, 4),big_mat_(1920, 1082, 4),qnan_(std::numeric_limits<float>::quiet_NaN()){
 
-		signal(SIGINT,sigint_handler);
+		//signal(SIGINT,sigint_handler);
 
 		if(freenect2_.enumerateDevices() == 0)
 		{
@@ -65,12 +69,10 @@ public:
 				std::cout << "creating CPU processor" << std::endl;
 				pipeline_ = new libfreenect2::CpuPacketPipeline();
 				break;
-#ifdef HAVE_OPENCL
 			case OPENCL:
 				std::cout << "creating OpenCL processor" << std::endl;
 				pipeline_ = new libfreenect2::OpenCLPacketPipeline();
 				break;
-#endif
 			case OPENGL:
 				std::cout << "creating OpenGL processor" << std::endl;
 				pipeline_ = new libfreenect2::OpenGLPacketPipeline();
@@ -122,22 +124,33 @@ public:
 		libfreenect2::Frame * depth = frames_[libfreenect2::Frame::Depth];
 
 		registration_->apply(rgb, depth, &undistorted_, &registered_, true, &big_mat_);
-		const short w = undistorted_.width;
-		const short h = undistorted_.height;
+		const std::size_t w = undistorted_.width;
+		const std::size_t h = undistorted_.height;
 
-		const float * itD0 = (float *)undistorted_.data;
-		const char * itRGB0 = (char *)registered_.data;
+        cv::Mat tmp_itD0(undistorted_.height, undistorted_.width, CV_8UC4, undistorted_.data);
+        cv::Mat tmp_itRGB0(registered_.height, registered_.width, CV_8UC4, registered_.data);
+        
+        if (mirror_ == true){
+
+            cv::flip(tmp_itD0,tmp_itD0,1);
+            cv::flip(tmp_itRGB0,tmp_itRGB0,1);
+
+        }
+
+        const float * itD0 = (float *) tmp_itD0.ptr();
+        const char * itRGB0 = (char *) tmp_itRGB0.ptr();
+        
 		pcl::PointXYZRGB * itP = &cloud->points[0];
         bool is_dense = true;
 		
-		for(int y = 0; y < h; ++y){
+		for(std::size_t y = 0; y < h; ++y){
 
 			const unsigned int offset = y * w;
 			const float * itD = itD0 + offset;
 			const char * itRGB = itRGB0 + offset * 4;
 			const float dy = rowmap(y);
 
-			for(size_t x = 0; x < w; ++x, ++itP, ++itD, itRGB += 4 )
+			for(std::size_t x = 0; x < w; ++x, ++itP, ++itD, itRGB += 4 )
 			{
 				const float depth_value = *itD / 1000.0f;
 				
@@ -178,7 +191,10 @@ public:
 		listener_.waitForNewFrame(frames_);
 		libfreenect2::Frame * rgb = frames_[libfreenect2::Frame::Color];
 		cv::Mat tmp(rgb->height, rgb->width, CV_8UC4, rgb->data);
-		cv::Mat r = tmp.clone();
+		cv::Mat r;
+        if (mirror_ == true) {cv::flip(tmp,r,1);}
+        else {r = tmp.clone();}
+        
 		listener_.release(frames_);
 		return std::move(r);
 	}
@@ -187,7 +203,10 @@ public:
 		listener_.waitForNewFrame(frames_);
 		libfreenect2::Frame * depth = frames_[libfreenect2::Frame::Depth];
 		cv::Mat tmp(depth->height, depth->width, CV_8UC4, depth->data);
-		cv::Mat r = tmp.clone();
+		cv::Mat r;
+        if (mirror_ == true) {cv::flip(tmp,r,1);}
+        else {r = tmp.clone();}
+
 		listener_.release(frames_);
 		return std::move(r);
 	}
@@ -201,9 +220,29 @@ public:
 		cv::Mat tmp_color(registered_.height, registered_.width, CV_8UC4, registered_.data);
 		cv::Mat r = tmp_color.clone();
 		cv::Mat d = tmp_depth.clone();
+        if (mirror_ == true) {
+            cv::flip(tmp_depth,d,1);
+            cv::flip(tmp_color,r,1);
+        }
 		listener_.release(frames_);
 		return std::move(std::pair<cv::Mat, cv::Mat>(r,d));
 	}
+    
+    /// Get the color camera's intrinsic matrix
+    /// @see explanation of intrinsic matrices: https://ksimek.github.io/2013/08/13/intrinsic/
+    /// @see equations used in libfreenect2: https://github.com/OpenKinect/libfreenect2/issues/41#issuecomment-72022111
+    cv::Mat getColorIntrinsicMatrix()
+    {
+      cv::Mat_<double> K = cv::Mat_<double>::eye(3,3);
+      libfreenect2::Freenect2Device::ColorCameraParams cp = dev_->getColorCameraParams();
+    
+      K(0,0)=cp.fx;///0.002199;
+      K(1,1)=cp.fy;///0.002199;
+      K(0,2)=cp.cx;
+      K(1,2)=cp.cy;
+    
+      return cv::Mat(K);
+    }
 
 private:
 
@@ -223,6 +262,7 @@ private:
 	    }
 	}
 
+    bool mirror_;
 	libfreenect2::Freenect2 freenect2_;
 	libfreenect2::Freenect2Device * dev_ = 0;
 	libfreenect2::PacketPipeline * pipeline_ = 0;
@@ -233,6 +273,5 @@ private:
 	Eigen::Matrix<float,512,1> colmap;
 	Eigen::Matrix<float,424,1> rowmap;
 	std::string serial_;
-	int map_[512 * 424];
 	float qnan_;   
 };

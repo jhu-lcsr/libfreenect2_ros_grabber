@@ -81,7 +81,7 @@ int main(int argc, char** argv)
   while (ros::ok()) {    
     cloud = k2g.updateCloud(cloud);
     pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(cloud);
-    
+
     br.sendTransform(
         tf::StampedTransform(
           tf::Transform(tf::Quaternion(0, 0, 0, 1), tf::Vector3(0.0, 0.0, 0.0)),
